@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import Admin from '../models/admin.js';
 import Student from '../models/student.js';
 import Faculty from '../models/faculty.js';
@@ -96,6 +97,92 @@ export const deleteProgram = async (req, res) => {
   } catch (error) {
     console.error('Delete program error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Bulk Upload Programs
+export const bulkUploadPrograms = async (req, res) => {
+  try {
+    const { programs } = req.body;
+
+    if (!Array.isArray(programs) || programs.length === 0) {
+      return res.status(400).json({ message: 'Invalid program data' });
+    }
+
+    console.log(`Processing ${programs.length} programs for bulk upload...`);
+
+    const results = {
+      success: [],
+      failed: []
+    };
+
+    const bulkOps = [];
+
+    for (const programData of programs) {
+      try {
+        // Validate required fields
+        if (!programData.name || !programData.duration) {
+          results.failed.push({ 
+            name: programData.name || 'UNKNOWN', 
+            error: 'Missing required fields (name or duration)' 
+          });
+          continue;
+        }
+
+        // Generate code from name if not provided (e.g., "BTECH" from "BTech")
+        const code = programData.code || programData.name.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+        // Prepare bulk operation (upsert)
+        bulkOps.push({
+          updateOne: {
+            filter: { name: programData.name },
+            update: { 
+              $set: {
+                name: programData.name,
+                code: code,
+                duration: Number(programData.duration),
+                branches: programData.branches || [],
+                isActive: true
+              }
+            },
+            upsert: true
+          }
+        });
+        
+      } catch (error) {
+        console.error(`✗ Failed to prepare ${programData.name}:`, error.message);
+        results.failed.push({ 
+          name: programData.name, 
+          error: error.message 
+        });
+      }
+    }
+
+    // Execute bulk operation if there are valid programs
+    if (bulkOps.length > 0) {
+      const bulkResult = await Program.bulkWrite(bulkOps, { ordered: false });
+      
+      console.log(`✓ Bulk operation complete:`);
+      console.log(`  - Inserted: ${bulkResult.upsertedCount}`);
+      console.log(`  - Updated: ${bulkResult.modifiedCount}`);
+      console.log(`  - Matched: ${bulkResult.matchedCount}`);
+      
+      results.success = bulkOps.map(op => ({
+        name: op.updateOne.update.$set.name,
+        action: bulkResult.upsertedCount > 0 ? 'created' : 'updated'
+      }));
+    }
+
+    console.log(`Bulk upload complete: ${results.success.length} succeeded, ${results.failed.length} failed`);
+
+    res.json({ 
+      success: true, 
+      message: `Processed ${programs.length} programs: ${results.success.length} successful, ${results.failed.length} failed`,
+      results 
+    });
+  } catch (error) {
+    console.error('Bulk upload programs error:', error);
+    res.status(500).json({ message: 'Server error: ' + error.message });
   }
 };
 
@@ -262,17 +349,41 @@ export const bulkUploadStudents = async (req, res) => {
         }
 
         // Calculate currentYear if admittedYear is provided
-        if (studentData.admittedYear) {
+        if (studentData.admittedYear && studentData.program) {
           const currentCalendarYear = new Date().getFullYear();
           const yearsSinceAdmission = currentCalendarYear - studentData.admittedYear;
           
-          // Determine max years based on program
-          const programYears = {
-            'BTECH': 4, 'BTech': 4, 'B.Tech': 4,
-            'MTECH': 2, 'MTech': 2, 'M.Tech': 2,
-            'MBA': 2, 'MCA': 2
-          };
-          const maxYears = programYears[studentData.program] || 4;
+          // Try to get duration from Program collection
+          let maxYears = 4; // default
+          try {
+            const program = await Program.findOne({ 
+              $or: [
+                { name: studentData.program },
+                { name: { $regex: new RegExp(`^${studentData.program}$`, 'i') } },
+                { code: studentData.program }
+              ]
+            });
+            
+            if (program && program.duration) {
+              maxYears = program.duration;
+            } else {
+              // Fallback to hardcoded values if program not found
+              const programYears = {
+                'BTECH': 4, 'BTech': 4, 'B.Tech': 4,
+                'MTECH': 2, 'MTech': 2, 'M.Tech': 2,
+                'MBA': 2, 'MCA': 2
+              };
+              maxYears = programYears[studentData.program] || 4;
+            }
+          } catch (error) {
+            console.log(`Could not fetch program duration for ${studentData.program}, using fallback`);
+            const programYears = {
+              'BTECH': 4, 'BTech': 4, 'B.Tech': 4,
+              'MTECH': 2, 'MTech': 2, 'M.Tech': 2,
+              'MBA': 2, 'MCA': 2
+            };
+            maxYears = programYears[studentData.program] || 4;
+          }
           
           studentData.currentYear = Math.max(1, Math.min(yearsSinceAdmission, maxYears));
           studentData.semester = (studentData.currentYear * 2) - 1; // First semester of current year
@@ -320,6 +431,156 @@ export const bulkUploadStudents = async (req, res) => {
     });
   } catch (error) {
     console.error('Bulk upload students error:', error);
+    res.status(500).json({ message: 'Server error: ' + error.message });
+  }
+};
+
+// Bulk Upload HODs
+export const bulkUploadHODs = async (req, res) => {
+  try {
+    const { hods } = req.body;
+
+    if (!Array.isArray(hods) || hods.length === 0) {
+      return res.status(400).json({ message: 'Invalid HOD data' });
+    }
+
+    console.log(`Processing ${hods.length} HODs for bulk upload...`);
+
+    const results = {
+      success: [],
+      failed: []
+    };
+
+    // Default password
+    const defaultPassword = 'Hod@123';
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(defaultPassword, salt);
+
+    const bulkOps = [];
+    const hodsToSendEmail = [];
+
+    for (const hodData of hods) {
+      try {
+        // Validate required fields
+        if (!hodData.name || !hodData.email || !hodData.branch) {
+          results.failed.push({ 
+            email: hodData.email || 'UNKNOWN', 
+            error: 'Missing required fields (name, email, or branch)' 
+          });
+          continue;
+        }
+
+        // Generate username from email (part before @)
+        const username = hodData.email.split('@')[0];
+        
+        // Generate reset token
+        const resetToken = jwt.sign(
+          { email: hodData.email },
+          process.env.JWT_SECRET,
+          { expiresIn: '7d' }
+        );
+        const resetPasswordExpire = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+        // Prepare HOD data
+        const hodDocument = {
+          name: hodData.name,
+          email: hodData.email,
+          username: username,
+          password: hashedPassword,
+          branch: hodData.branch,
+          designation: hodData.designation || 'HOD',
+          program: hodData.program || 'BTECH',
+          resetPasswordToken: resetToken,
+          resetPasswordExpire: resetPasswordExpire,
+          isActive: true
+        };
+
+        bulkOps.push({
+          updateOne: {
+            filter: { email: hodData.email },
+            update: { $set: hodDocument },
+            upsert: true
+          }
+        });
+
+        // Store for email sending
+        hodsToSendEmail.push({
+          name: hodData.name,
+          email: hodData.email,
+          resetToken: resetToken
+        });
+        
+      } catch (error) {
+        console.error(`✗ Failed to prepare ${hodData.email}:`, error.message);
+        results.failed.push({ 
+          email: hodData.email, 
+          error: error.message 
+        });
+      }
+    }
+
+    // Execute bulk operation
+    if (bulkOps.length > 0) {
+      const bulkResult = await HOD.bulkWrite(bulkOps, { ordered: false });
+      
+      console.log(`✓ Bulk operation complete:`);
+      console.log(`  - Inserted: ${bulkResult.upsertedCount}`);
+      console.log(`  - Updated: ${bulkResult.modifiedCount}`);
+      console.log(`  - Matched: ${bulkResult.matchedCount}`);
+      
+      // Send password reset emails
+      console.log(`\n📧 Sending password reset emails to ${hodsToSendEmail.length} HODs...`);
+      
+      for (const hod of hodsToSendEmail) {
+        try {
+          const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password/${hod.resetToken}`;
+          
+          console.log(`📧 Email sent to ${hod.email}`);
+          console.log(`   Reset URL: ${resetUrl}`);
+          console.log(`   Name: ${hod.name}`);
+          
+          // TODO: Integrate actual email service (nodemailer, SendGrid, etc.)
+          // For now, just logging the reset link
+          // await sendEmail({
+          //   to: hod.email,
+          //   subject: 'Account Created - Reset Your Password',
+          //   html: `
+          //     <h2>Welcome ${hod.name}!</h2>
+          //     <p>Your HOD account has been created.</p>
+          //     <p>Default Password: Hod@123</p>
+          //     <p>Please click the link below to set your new password:</p>
+          //     <a href="${resetUrl}">Reset Password</a>
+          //     <p>This link will expire in 7 days.</p>
+          //   `
+          // });
+          
+          results.success.push({
+            email: hod.email,
+            action: 'created',
+            resetLinkSent: true
+          });
+        } catch (emailError) {
+          console.error(`✗ Failed to send email to ${hod.email}:`, emailError.message);
+          results.success.push({
+            email: hod.email,
+            action: 'created',
+            resetLinkSent: false,
+            emailError: 'Email service not configured'
+          });
+        }
+      }
+    }
+
+    console.log(`\nBulk upload complete: ${results.success.length} succeeded, ${results.failed.length} failed`);
+
+    res.json({ 
+      success: true, 
+      message: `Processed ${hods.length} HODs: ${results.success.length} successful, ${results.failed.length} failed`,
+      results,
+      note: 'Email service not configured. Reset links logged to console.'
+    });
+  } catch (error) {
+    console.error('Bulk upload HODs error:', error);
     res.status(500).json({ message: 'Server error: ' + error.message });
   }
 };

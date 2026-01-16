@@ -7,6 +7,9 @@ const hodSchema = new mongoose.Schema({
   program: {type: String, required: true},
   name: {type: String, required: true},
   email: {type: String, required: true, unique: true},
+  designation: {type: String, default: 'HOD'},
+  resetPasswordToken: {type: String},
+  resetPasswordExpire: {type: Date},
   isActive: {type: Boolean, default: true}
 }, {timestamps: true});
 

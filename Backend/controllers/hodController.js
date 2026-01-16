@@ -7,6 +7,52 @@ import FeedbackWindow from '../models/feedbackWindow.js';
 import Feedback from '../models/feedback.js';
 import Student from '../models/student.js';
 
+// Get Dashboard Statistics
+export const getDashboardStats = async (req, res) => {
+  try {
+    const hod = await HOD.findById(req.user.id);
+    
+    if (!hod) {
+      return res.status(404).json({ message: 'HOD not found' });
+    }
+
+    // Count total students in HOD's branch
+    const totalStudents = await Student.countDocuments({
+      program: hod.program,
+      branch: hod.branch,
+      isActive: true
+    });
+
+    // Count active batches (distinct admitted years)
+    const activeBatches = await Batch.countDocuments({
+      program: hod.program,
+      branch: hod.branch,
+      isActive: true
+    });
+
+    // Get all active subjects to find unique semesters
+    const subjects = await Subject.find({
+      program: hod.program,
+      branch: hod.branch,
+      isActive: true
+    }).distinct('semester');
+
+    const activeSemesters = subjects.length;
+
+    res.json({
+      success: true,
+      stats: {
+        totalStudents,
+        activeBatches,
+        activeSemesters
+      }
+    });
+  } catch (error) {
+    console.error('Get dashboard stats error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // Get HOD profile
 export const getHODProfile = async (req, res) => {
   try {

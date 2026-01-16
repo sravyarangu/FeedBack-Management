@@ -4,6 +4,7 @@ import {
   getAdminProfile,
   getAllPrograms,
   createProgram,
+  bulkUploadPrograms,
   updateProgram,
   deleteProgram,
   getBatches,
@@ -25,6 +26,7 @@ import {
   deleteSubject,
   getAllHODs,
   createHOD,
+  bulkUploadHODs,
   updateHOD,
   deleteHOD,
   getSubjectMapping,
@@ -43,6 +45,9 @@ router.get('/profile', auth, isAdmin, getAdminProfile);
 
 // Get all programs
 router.get('/programs', auth, isAdmin, getAllPrograms);
+
+// Bulk upload programs
+router.post('/programs/bulk', auth, isAdmin, bulkUploadPrograms);
 
 // Create program
 router.post('/programs', auth, isAdmin, createProgram);
@@ -116,6 +121,9 @@ router.delete('/subjects/:id', auth, isAdmin, deleteSubject);
 
 // Get all HODs
 router.get('/hods', auth, isAdmin, getAllHODs);
+
+// Bulk upload HODs
+router.post('/hods/bulk', auth, isAdmin, bulkUploadHODs);
 
 // Create HOD
 router.post('/hods', auth, isAdmin, createHOD);

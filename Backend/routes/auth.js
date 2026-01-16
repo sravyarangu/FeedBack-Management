@@ -14,6 +14,7 @@ import {
   vicePrincipalChangePassword,
   studentForgotPassword,
   hodForgotPassword,
+  hodResetPasswordWithToken,
   adminForgotPassword,
   principalForgotPassword,
   vicePrincipalForgotPassword
@@ -71,6 +72,9 @@ router.post('/vice-principal/forgot-password', vicePrincipalForgotPassword);
 
 // HOD Forgot Password
 router.post('/hod/forgot-password', hodForgotPassword);
+
+// HOD Reset Password with Token (from email link)
+router.post('/hod/reset-password', hodResetPasswordWithToken);
 
 // Admin Forgot Password
 router.post('/admin/forgot-password', adminForgotPassword);

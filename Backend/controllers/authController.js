@@ -96,24 +96,40 @@ export const hodLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    console.log('\n🔐 HOD Login Attempt:');
+    console.log(`   Email: ${email}`);
+    console.log(`   Password provided: ${password ? 'Yes' : 'No'}`);
+
     if (!email || !password) {
+      console.log('❌ Missing email or password');
       return res.status(400).json({ message: 'Please provide email and password' });
     }
 
     const hod = await HOD.findOne({ email, isActive: true });
 
     if (!hod) {
+      console.log(`❌ HOD not found with email: ${email}`);
       return res.status(401).json({ message: 'Invalid credentials' });
     }
+
+    console.log(`✓ HOD found: ${hod.name} (${hod.email})`);
+    console.log(`   Username: ${hod.username}`);
+    console.log(`   Branch: ${hod.branch}`);
+    console.log(`   Active: ${hod.isActive}`);
 
     // Compare password (hashed)
     const isMatch = await bcrypt.compare(password, hod.password);
 
+    console.log(`   Password match: ${isMatch ? '✅ YES' : '❌ NO'}`);
+
     if (!isMatch) {
+      console.log('❌ Password incorrect');
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     const token = generateToken(hod, 'hod');
+
+    console.log('✅ Login successful! Token generated\n');
 
     res.json({
       success: true,
@@ -395,6 +411,63 @@ export const hodForgotPassword = async (req, res) => {
     });
   } catch (error) {
     console.error('HOD forgot password error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// HOD Reset Password with Token - For email reset links
+export const hodResetPasswordWithToken = async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ 
+        message: 'Please provide token and new password' 
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: 'New password must be at least 6 characters' });
+    }
+
+    // Verify token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (error) {
+      return res.status(400).json({ message: 'Invalid or expired reset token' });
+    }
+
+    // Find HOD with valid reset token
+    const hod = await HOD.findOne({ 
+      email: decoded.email,
+      resetPasswordToken: token,
+      resetPasswordExpire: { $gt: Date.now() },
+      isActive: true 
+    });
+
+    if (!hod) {
+      return res.status(400).json({ message: 'Invalid or expired reset token' });
+    }
+
+    // Hash and update new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    hod.password = hashedPassword;
+    
+    // Clear reset token
+    hod.resetPasswordToken = undefined;
+    hod.resetPasswordExpire = undefined;
+    
+    await hod.save();
+
+    res.json({ 
+      success: true, 
+      message: 'Password reset successfully. You can now login with your new password.',
+      name: hod.name,
+      email: hod.email
+    });
+  } catch (error) {
+    console.error('HOD reset password with token error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };

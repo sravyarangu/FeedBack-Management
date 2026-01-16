@@ -246,17 +246,33 @@ npm run dev
 
 ### 🔑 Test Credentials Quick Reference
 
-| Role | Login URL | Email/Roll Number | Password/DOB |
-|------|-----------|-------------------|--------------|
-| **Student** | `/login/student` | `23VV1A0546` | `2005-01-10` |
-| **Student** | `/login/student` | `23VV1A0547` | `2005-02-15` |
-| **Student** | `/login/student` | `23VV1A0548` | `2005-03-20` |
-| **Student** | `/login/student` | `23VV1A0549` | `2005-04-25` |
-| **Student** | `/login/student` | `23VV1A0550` | `2005-05-30` |
-| **HOD (CSE)** | `/login/hod` | `hod.cse@jntugv.edu.in` | `Hod@123` |
-| **Admin** | `/login/admin` (Super Admin) | `admin@jntugv.edu.in` | `Admin@123` |
-| **Principal** | `/login/admin` (Principal) | `principal@jntugv.edu.in` | `Principal@123` |
-| **Vice Principal** | `/login/admin` (Vice Principal) | `viceprincipal@jntugv.edu.in` | `VicePrincipal@123` |
+#### Student Credentials
+| Login URL | Roll Number | Date of Birth |
+|-----------|-------------|---------------|
+| `/login/student` | `23VV1A0546` | `2005-01-10` |
+| `/login/student` | `23VV1A0501` | `2005-05-15` |
+| `/login/student` | `22VV1A0401` | `2004-03-25` |
+
+#### HOD Credentials (Each HOD sees their department data)
+| Department | Login URL | Email | Password | HOD Name |
+|------------|-----------|-------|----------|----------|
+| **CSE** | `/login/hod` | `hod.cse@jntugvcev.edu.in` | `hod@123` | Dr. P Aruna Kumari |
+| **ECE** | `/login/hod` | `hod.ece@jntugvcev.edu.in` | `hod@123` | Dr.T S N Murthy |
+| **EEE** | `/login/hod` | `hod.eee@jntugvcev.edu.in` | `hod@123` | Dr.Vakula |
+| **MECH** | `/login/hod` | `hod.mech@jntugvcev.edu.in` | `hod@123` | K.Srinivasa Prasad |
+| **IT** | `/login/hod` | `hod.it@jntugvcev.edu.in` | `hod@123` | Dr.Bindu Madhuri |
+| **MBA** | `/login/hod` | `hod.mba@jntugvcev.edu.in` | `hod@123` | P.Sridevi |
+| **MET** | `/login/hod` | `hod.met@jntugvcev.edu.in` | `hod@123` | K.Srinivasa Prasad |
+| **CE** | `/login/hod` | `hod.ce@jntukucev.edu.in` | `hod@123` | G.Appala Naidu |
+
+> **Note:** All HOD accounts use the same password: `hod@123`
+
+#### Admin & Principal Credentials
+| Role | Login URL | Email | Password |
+|------|-----------|-------|----------|
+| **Admin (Super Admin)** | `/login/admin` | `admin@jntugv.edu.in` | `Admin@123` |
+| **Principal** | `/login/admin` | `principal@jntugv.edu.in` | `Principal@123` |
+| **Vice Principal** | `/login/admin` | `viceprincipal@jntugv.edu.in` | `VicePrincipal@123` |
 
 ### Test 1: Student Login Flow
 ```
@@ -272,11 +288,19 @@ npm run dev
 ### Test 2: HOD Login Flow
 ```
 1. Navigate to: http://localhost:5173/login/hod
-2. Enter Email: hod.cse@jntugv.edu.in
-3. Enter Password: Hod@123
+2. Enter Email: hod.cse@jntugvcev.edu.in
+3. Enter Password: hod@123
 4. Click "Login"
 5. ✅ Expected: Redirect to /hod/dashboard
-6. ✅ Check: User name displayed in sidebar
+6. ✅ Check: Dashboard shows "Dr. P Aruna Kumari" as HOD name
+7. ✅ Check: Branch shows "CSE" and department "Computer Science & Engineering"
+8. ✅ Check: User name displayed in sidebar
+
+Test with different HOD accounts (all use password: hod@123):
+- ECE: hod.ece@jntugvcev.edu.in / hod@123
+  Expected: Shows "Dr.T S N Murthy" and "ECE" branch
+- EEE: hod.eee@jntugvcev.edu.in / hod@123
+  Expected: Shows "Dr.Vakula" and "EEE" branch
 ```
 
 ### Test 3: Admin (Super Admin) Login Flow
@@ -307,8 +331,17 @@ npm run dev
 4. Enter Password: VicePrincipal@123
 5. Click "Login"
 6. ✅ Expected: Redirect to /admin/analytics
-```
+``` "Invalid credentials"
+6. ✅ Check: No redirect, stays on login page
+7. ✅ Check: Page does NOT refresh (error displays inline)
 
+Test HOD login with wrong password:
+1. Navigate to: http://localhost:5173/login/hod
+2. Enter Email: hod.cse@jntugvcev.edu.in
+3. Enter Password: WrongPassword
+4. Click "Login"
+5. ✅ Expected: Error message displayed
+6. ✅ Check: Page does NOT refresh
 ### Test 6: Invalid Credentials
 ```
 1. Navigate to: http://localhost:5173/login/student

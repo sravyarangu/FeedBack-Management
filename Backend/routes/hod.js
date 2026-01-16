@@ -1,6 +1,7 @@
 import express from 'express';
 import { auth, isHOD } from '../middleware/auth.js';
 import {
+  getDashboardStats,
   getHODProfile,
   getBatches,
   getBatchStudents,
@@ -14,6 +15,9 @@ import {
 } from '../controllers/hodController.js';
 
 const router = express.Router();
+
+// Get dashboard statistics
+router.get('/dashboard/stats', auth, isHOD, getDashboardStats);
 
 // Get HOD profile
 router.get('/profile', auth, isHOD, getHODProfile);
