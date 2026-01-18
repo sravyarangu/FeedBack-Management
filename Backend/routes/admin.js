@@ -11,6 +11,7 @@ import {
   createBatch,
   updateBatch,
   deleteBatch,
+  bulkUploadBatches,
   getStudents,
   bulkUploadStudents,
   createStudent,
@@ -20,26 +21,40 @@ import {
   createFaculty,
   updateFaculty,
   deleteFaculty,
+  bulkUploadFaculty,
   getAllSubjects,
   createSubject,
   updateSubject,
   deleteSubject,
+  bulkUploadSubjects,
   getAllHODs,
   createHOD,
   bulkUploadHODs,
   updateHOD,
   deleteHOD,
+  bulkUploadBranches,
   getSubjectMapping,
   createSubjectMapping,
   bulkUploadSubjectMapping,
   updateSubjectMapping,
   deleteSubjectMapping
 } from '../controllers/adminController.js';
+import { downloadTemplate } from '../controllers/templateController.js';
 
 const router = express.Router();
 
 // Get admin profile
 router.get('/profile', auth, isAdmin, getAdminProfile);
+
+// ============ TEMPLATE DOWNLOADS ============
+
+// Download Excel templates for bulk upload
+router.get('/template/:type', auth, isAdmin, downloadTemplate);
+
+// ============ BRANCH MANAGEMENT ============
+
+// Bulk upload branches
+router.post('/branches/bulk', auth, isAdmin, bulkUploadBranches);
 
 // ============ PROGRAM MANAGEMENT ============
 
@@ -62,6 +77,9 @@ router.delete('/programs/:id', auth, isAdmin, deleteProgram);
 
 // Get batches (with optional filtering)
 router.get('/batches', auth, isAdmin, getBatches);
+
+// Bulk upload batches
+router.post('/batches/bulk', auth, isAdmin, bulkUploadBatches);
 
 // Create batch
 router.post('/batches', auth, isAdmin, createBatch);
@@ -94,6 +112,9 @@ router.delete('/students/:id', auth, isAdmin, deleteStudent);
 // Get all faculty
 router.get('/faculty', auth, isAdmin, getAllFaculty);
 
+// Bulk upload faculty
+router.post('/faculty/bulk', auth, isAdmin, bulkUploadFaculty);
+
 // Create faculty
 router.post('/faculty', auth, isAdmin, createFaculty);
 
@@ -107,6 +128,9 @@ router.delete('/faculty/:id', auth, isAdmin, deleteFaculty);
 
 // Get all subjects
 router.get('/subjects', auth, isAdmin, getAllSubjects);
+
+// Bulk upload subjects
+router.post('/subjects/bulk', auth, isAdmin, bulkUploadSubjects);
 
 // Create subject
 router.post('/subjects', auth, isAdmin, createSubject);

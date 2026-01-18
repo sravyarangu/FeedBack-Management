@@ -9,6 +9,64 @@ import Subject from '../models/subject.js';
 import HOD from '../models/hod.js';
 import SubjectMap from '../models/subjectMap.js';
 
+// Helper function to convert date to ddmmyyyy format
+const convertToddmmyyyy = (dateInput) => {
+  if (!dateInput) return dateInput;
+  
+  // If already in ddmmyyyy format (8 digits, no separators)
+  if (/^\d{8}$/.test(String(dateInput))) {
+    return String(dateInput);
+  }
+  
+  let day, month, year;
+  
+  // Handle Excel serial date number (number between 1 and 60000)
+  if (typeof dateInput === 'number' || (!isNaN(dateInput) && !String(dateInput).includes('-') && !String(dateInput).includes('/'))) {
+    const numValue = Number(dateInput);
+    if (numValue > 0 && numValue < 60000) {
+      // Excel date: days since 1900-01-01 (with 1900 leap year bug)
+      const excelEpoch = new Date(1899, 11, 30); // Dec 30, 1899
+      const date = new Date(excelEpoch.getTime() + numValue * 86400000);
+      day = String(date.getDate()).padStart(2, '0');
+      month = String(date.getMonth() + 1).padStart(2, '0');
+      year = date.getFullYear();
+      return `${day}${month}${year}`;
+    }
+  }
+  
+  // Handle Date object
+  if (dateInput instanceof Date) {
+    day = String(dateInput.getDate()).padStart(2, '0');
+    month = String(dateInput.getMonth() + 1).padStart(2, '0');
+    year = dateInput.getFullYear();
+  } else if (typeof dateInput === 'string') {
+    // Handle dd-mm-yyyy or dd/mm/yyyy
+    if (dateInput.includes('-') || dateInput.includes('/')) {
+      const parts = dateInput.split(/[-/]/);
+      if (parts.length === 3) {
+        // Check if format is dd-mm-yyyy or yyyy-mm-dd
+        if (parts[0].length === 4) {
+          // yyyy-mm-dd format
+          year = parts[0];
+          month = parts[1].padStart(2, '0');
+          day = parts[2].padStart(2, '0');
+        } else {
+          // dd-mm-yyyy format
+          day = parts[0].padStart(2, '0');
+          month = parts[1].padStart(2, '0');
+          year = parts[2];
+        }
+      }
+    }
+  }
+  
+  if (day && month && year) {
+    return `${day}${month}${year}`;
+  }
+  
+  return String(dateInput);
+};
+
 // ============ ADMIN PROFILE ============
 
 export const getAdminProfile = async (req, res) => {
@@ -129,9 +187,6 @@ export const bulkUploadPrograms = async (req, res) => {
           continue;
         }
 
-        // Generate code from name if not provided (e.g., "BTECH" from "BTech")
-        const code = programData.code || programData.name.toUpperCase().replace(/[^A-Z0-9]/g, '');
-
         // Prepare bulk operation (upsert)
         bulkOps.push({
           updateOne: {
@@ -139,9 +194,7 @@ export const bulkUploadPrograms = async (req, res) => {
             update: { 
               $set: {
                 name: programData.name,
-                code: code,
                 duration: Number(programData.duration),
-                branches: programData.branches || [],
                 isActive: true
               }
             },
@@ -346,6 +399,11 @@ export const bulkUploadStudents = async (req, res) => {
             error: 'Missing required fields (rollNo, name, or dob)' 
           });
           continue;
+        }
+
+        // Convert dob to ddmmyyyy format if needed
+        if (studentData.dob) {
+          studentData.dob = convertToddmmyyyy(studentData.dob);
         }
 
         // Calculate currentYear if admittedYear is provided
@@ -1096,5 +1154,280 @@ export const deleteSubjectMapping = async (req, res) => {
   } catch (error) {
     console.error('Delete subject mapping error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// ============ BULK UPLOAD CONTROLLERS ============
+
+// Bulk Upload Batches
+export const bulkUploadBatches = async (req, res) => {
+  try {
+    const { batches } = req.body;
+
+    if (!Array.isArray(batches) || batches.length === 0) {
+      return res.status(400).json({ message: 'Invalid batch data' });
+    }
+
+    console.log(`Processing ${batches.length} batches for bulk upload...`);
+
+    const results = {
+      success: [],
+      failed: []
+    };
+
+    const bulkOps = [];
+
+    for (const batchData of batches) {
+      try {
+        if (!batchData.program || !batchData.batchYear) {
+          results.failed.push({ 
+            program: batchData.program || 'UNKNOWN', 
+            error: 'Missing required fields (program or batchYear)' 
+          });
+          continue;
+        }
+
+        bulkOps.push({
+          updateOne: {
+            filter: { program: batchData.program, batchYear: batchData.batchYear },
+            update: { $set: batchData },
+            upsert: true
+          }
+        });
+      } catch (error) {
+        results.failed.push({ program: batchData.program, error: error.message });
+      }
+    }
+
+    if (bulkOps.length > 0) {
+      const bulkResult = await Batch.bulkWrite(bulkOps, { ordered: false });
+      results.success = bulkOps.map(op => ({ program: op.updateOne.update.$set.program }));
+    }
+
+    res.json({ 
+      success: true, 
+      message: `Processed ${batches.length} batches: ${results.success.length} successful, ${results.failed.length} failed`,
+      results 
+    });
+  } catch (error) {
+    console.error('Bulk upload batches error:', error);
+    res.status(500).json({ message: 'Server error: ' + error.message });
+  }
+};
+
+// Bulk Upload Faculty
+export const bulkUploadFaculty = async (req, res) => {
+  try {
+    const { faculty } = req.body;
+
+    if (!Array.isArray(faculty) || faculty.length === 0) {
+      return res.status(400).json({ message: 'Invalid faculty data' });
+    }
+
+    console.log(`Processing ${faculty.length} faculty for bulk upload...`);
+
+    const results = {
+      success: [],
+      failed: []
+    };
+
+    const defaultPassword = 'Faculty@123';
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(defaultPassword, salt);
+
+    const bulkOps = [];
+
+    for (const facultyData of faculty) {
+      try {
+        if (!facultyData.name || !facultyData.email || !facultyData.branch) {
+          results.failed.push({ 
+            email: facultyData.email || 'UNKNOWN', 
+            error: 'Missing required fields (name, email, or branch)' 
+          });
+          continue;
+        }
+
+        const facultyDocument = {
+          name: facultyData.name,
+          email: facultyData.email,
+          password: hashedPassword,
+          branch: facultyData.branch,
+          department: facultyData.branch,
+          designation: facultyData.designation || 'Faculty',
+          isActive: true
+        };
+
+        bulkOps.push({
+          updateOne: {
+            filter: { email: facultyData.email },
+            update: { $set: facultyDocument },
+            upsert: true
+          }
+        });
+      } catch (error) {
+        results.failed.push({ email: facultyData.email, error: error.message });
+      }
+    }
+
+    if (bulkOps.length > 0) {
+      const bulkResult = await Faculty.bulkWrite(bulkOps, { ordered: false });
+      results.success = bulkOps.map(op => ({ email: op.updateOne.update.$set.email }));
+    }
+
+    res.json({ 
+      success: true, 
+      message: `Processed ${faculty.length} faculty: ${results.success.length} successful, ${results.failed.length} failed`,
+      results 
+    });
+  } catch (error) {
+    console.error('Bulk upload faculty error:', error);
+    res.status(500).json({ message: 'Server error: ' + error.message });
+  }
+};
+
+// Bulk Upload Subjects
+export const bulkUploadSubjects = async (req, res) => {
+  try {
+    const { subjects } = req.body;
+
+    if (!Array.isArray(subjects) || subjects.length === 0) {
+      return res.status(400).json({ message: 'Invalid subject data' });
+    }
+
+    console.log(`Processing ${subjects.length} subjects for bulk upload...`);
+
+    const results = {
+      success: [],
+      failed: []
+    };
+
+    const bulkOps = [];
+
+    for (const subjectData of subjects) {
+      try {
+        console.log('Subject data received:', JSON.stringify(subjectData));
+        
+        if (!subjectData.subjectCode || !subjectData.subjectName) {
+          console.log(`Failed validation - subjectCode: ${subjectData.subjectCode}, subjectName: ${subjectData.subjectName}`);
+          results.failed.push({ 
+            code: subjectData.subjectCode || 'UNKNOWN', 
+            error: 'Missing required fields (subjectCode or subjectName)' 
+          });
+          continue;
+        }
+
+        // Ensure required fields are set
+        const subjectDoc = {
+          subjectCode: subjectData.subjectCode,
+          subjectName: subjectData.subjectName,
+          program: subjectData.program || 'BTECH',
+          branch: subjectData.branch,
+          regulation: subjectData.regulation,
+          year: Number(subjectData.year) || 1,
+          semester: Number(subjectData.semester) || 1,
+          type: subjectData.type,
+          isActive: true
+        };
+
+        console.log('Prepared subject doc:', JSON.stringify(subjectDoc));
+
+        bulkOps.push({
+          updateOne: {
+            filter: { subjectCode: subjectData.subjectCode },
+            update: { $set: subjectDoc },
+            upsert: true
+          }
+        });
+      } catch (error) {
+        console.error(`Error preparing subject ${subjectData.subjectCode}:`, error);
+        results.failed.push({ code: subjectData.subjectCode, error: error.message });
+      }
+    }
+
+    if (bulkOps.length > 0) {
+      console.log(`Executing bulkWrite with ${bulkOps.length} operations...`);
+      const bulkResult = await Subject.bulkWrite(bulkOps, { ordered: false });
+      console.log('Bulk result:', bulkResult);
+      results.success = bulkOps.map(op => ({ code: op.updateOne.update.$set.subjectCode }));
+    } else {
+      console.log('No valid subjects to upload');
+    }
+
+    res.json({ 
+      success: true, 
+      message: `Processed ${subjects.length} subjects: ${results.success.length} successful, ${results.failed.length} failed`,
+      results 
+    });
+  } catch (error) {
+    console.error('Bulk upload subjects error:', error);
+    res.status(500).json({ message: 'Server error: ' + error.message });
+  }
+};
+
+// Bulk Upload Branches
+export const bulkUploadBranches = async (req, res) => {
+  try {
+    const { branches } = req.body;
+
+    if (!Array.isArray(branches) || branches.length === 0) {
+      return res.status(400).json({ message: 'Invalid branch data' });
+    }
+
+    console.log(`Processing ${branches.length} branches for bulk upload...`);
+
+    // For branches, we update the Program model to add branches
+    const results = {
+      success: [],
+      failed: []
+    };
+
+    for (const branchData of branches) {
+      try {
+        if (!branchData.program || !branchData.branch) {
+          results.failed.push({ 
+            branch: branchData.branch || 'UNKNOWN', 
+            error: 'Missing required fields (program or branch)' 
+          });
+          continue;
+        }
+
+        // Find the program and add the branch
+        const program = await Program.findOne({ name: branchData.program });
+        
+        if (!program) {
+          results.failed.push({ 
+            branch: branchData.branch, 
+            error: `Program ${branchData.program} not found` 
+          });
+          continue;
+        }
+
+        // Add branch to program if it doesn't exist
+        const branchObj = {
+          name: branchData.branch,
+          specialisation: branchData.specialisation || null
+        };
+
+        const branchExists = program.branches.some(b => b.name === branchData.branch);
+        
+        if (!branchExists) {
+          program.branches.push(branchObj);
+          await program.save();
+        }
+
+        results.success.push({ branch: branchData.branch, program: branchData.program });
+      } catch (error) {
+        results.failed.push({ branch: branchData.branch, error: error.message });
+      }
+    }
+
+    res.json({ 
+      success: true, 
+      message: `Processed ${branches.length} branches: ${results.success.length} successful, ${results.failed.length} failed`,
+      results 
+    });
+  } catch (error) {
+    console.error('Bulk upload branches error:', error);
+    res.status(500).json({ message: 'Server error: ' + error.message });
   }
 };

@@ -8,7 +8,7 @@ const subjectSchema = new mongoose.Schema({
   regulation: String,
   year: {type: Number, required: true},
   semester: {type: Number, required: true},
-  credits: Number,
+  type: String,
   isActive: {type: Boolean, default: true}
 }, {timestamps: true});
 

@@ -4,7 +4,7 @@ const studentSchema = new mongoose.Schema({
     rollNo :{type : String , required : true , unique : true  },
     name : {type: String, required: true},
     email : String ,
-    dob : {type: String, required: true}, // Format: dd-mm-yyyy
+    dob : {type: String, required: true}, // Format: ddmmyyyy (e.g., 10012005)
     branch : {type: String, default: 'GENERAL'},
     program : {type: String, default: 'BTech'}, // BTech, MTech, MCA, MBA
     admittedYear : {type: Number, default: () => new Date().getFullYear()},

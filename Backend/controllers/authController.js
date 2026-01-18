@@ -32,25 +32,31 @@ export const studentLogin = async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Normalize DOB for comparison - accept multiple formats
+    // Normalize DOB for comparison - handle ddmmyyyy format and other formats
     const normalizeDOB = (dateStr) => {
       if (!dateStr) return '';
       
-      // Already in YYYY-MM-DD format
-      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      // If already in ddmmyyyy format (8 digits, no separators)
+      if (/^\d{8}$/.test(dateStr)) {
         return dateStr;
       }
       
-      // Handle DD-MM-YYYY or DD/MM/YYYY format
+      // Handle YYYY-MM-DD format (convert to ddmmyyyy)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        const [year, month, day] = dateStr.split('-');
+        return `${day}${month}${year}`;
+      }
+      
+      // Handle DD-MM-YYYY or DD/MM/YYYY format (convert to ddmmyyyy)
       const parts = dateStr.split(/[-\/]/);
       if (parts.length === 3) {
         const [part1, part2, part3] = parts;
         // If first part is 4 digits, it's YYYY-MM-DD
         if (part1.length === 4) {
-          return `${part1}-${part2.padStart(2, '0')}-${part3.padStart(2, '0')}`;
+          return `${part3.padStart(2, '0')}${part2.padStart(2, '0')}${part1}`;
         }
-        // Otherwise assume DD-MM-YYYY and convert to YYYY-MM-DD
-        return `${part3}-${part2.padStart(2, '0')}-${part1.padStart(2, '0')}`;
+        // Otherwise assume DD-MM-YYYY
+        return `${part1.padStart(2, '0')}${part2.padStart(2, '0')}${part3}`;
       }
       
       return dateStr;
@@ -77,11 +83,15 @@ export const studentLogin = async (req, res) => {
         rollNo: student.rollNo,
         name: student.name,
         email: student.email,
+        dob: student.dob,
         branch: student.branch,
         program: student.program,
         admittedYear: student.admittedYear,
+        currentYear: student.currentYear,
         year: student.currentYear,
         semester: student.semester,
+        regulation: student.regulation,
+        specialisation: student.specialisation,
         role: 'student'
       }
     });
@@ -140,7 +150,9 @@ export const hodLogin = async (req, res) => {
         name: hod.name,
         email: hod.email,
         branch: hod.branch,
+        department: hod.department,
         program: hod.program,
+        designation: hod.designation,
         role: 'hod'
       }
     });
